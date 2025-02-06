@@ -1,0 +1,27 @@
+name: Main merge activities
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+    - main
+
+jobs:
+  merge:
+    name: merge main
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Get next version
+      uses: reecetech/version-increment@2024.10.1
+      id: version
+      with:
+        scheme: semver
+        increment: patch
+    - name: Push next tagged version
+      run: |
+        echo "Next version is ${{ steps.version.outputs.version }}"
+        git tag v${{ steps.version.outputs.version }}
+        git push origin tag v${{ steps.version.outputs.version }}
+
