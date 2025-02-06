@@ -1,0 +1,92 @@
+name: Terraform Workflow
+
+on:
+  workflow_call:
+    inputs:
+      terraform-folder:
+        required: true
+        type: string
+        description: 'Directory containing Terraform configuration'
+      environment:
+        required: true
+        type: string
+        description: 'Environment to deploy (e.g., dev, staging, prod)'
+      terraform-version:
+        required: false
+        type: string
+        default: 'latest'
+        description: 'Terraform version to use'
+      apply:
+        required: false
+        type: boolean
+        default: false
+        description: 'Run terraform apply'
+      destroy:
+        required: false
+        type: boolean
+        default: false
+        description: 'Run terraform destroy'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: 'Terraform'
+    runs-on: ubuntu-22.04
+    environment: ${{ inputs.environment }}
+    
+    defaults:
+      run:
+        working-directory: ${{ inputs.terraform-folder }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Validate Configuration Files
+      run: |
+        BACKEND_FILE="environments/${{ inputs.environment }}/${{ inputs.environment }}.tfbackend"
+        VARS_FILE="environments/${{ inputs.environment }}/${{ inputs.environment }}.tfvars"
+        
+        if [ ! -f "$BACKEND_FILE" ]; then
+          echo "Error: Backend configuration file not found: $BACKEND_FILE"
+          exit 1
+        fi
+        
+        if [ ! -f "$VARS_FILE" ]; then
+          echo "Error: Variables file not found: $VARS_FILE"
+          exit 1
+        fi
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+
+    - name: Terraform Plan
+      env:
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      run: |
+        terraform init -backend-config=environments/${{ inputs.environment }}/${{ inputs.environment }}.tfbackend
+        terraform plan -var-file=environments/${{ inputs.environment }}/${{ inputs.environment }}.tfvars
+      
+    - name: Terraform Apply
+      if: inputs.apply
+      env:
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        DESTROY_TOGGLE: ${{inputs.destroy && '-destroy' || ''}}
+      run: |
+        terraform apply -auto-approve -var-file=environments/${{ inputs.environment }}/${{ inputs.environment }}.tfvars $DESTROY_TOGGLE
+
